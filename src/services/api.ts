@@ -1,19 +1,19 @@
-const API_BASE = "http://localhost:3001"; // Update if your backend runs elsewhere
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 export async function fetchAuctions() {
-  const res = await fetch(`${API_BASE}/auctions`);
+  const res = await fetch(`${API_BASE_URL}/auctions`);
   if (!res.ok) throw new Error("Failed to fetch auctions");
   return res.json();
 }
 
 export async function fetchAuctionById(id: number) {
-  const res = await fetch(`${API_BASE}/auctions/${id}`);
+  const res = await fetch(`${API_BASE_URL}/auctions/${id}`);
   if (!res.ok) throw new Error("Failed to fetch auction details");
   return res.json();
 }
 
 export async function placeBid(auctionId: number, userId: number, amount: number) {
-  const res = await fetch(`${API_BASE}/auctions/${auctionId}/bids`, {
+  const res = await fetch(`${API_BASE_URL}/auctions/${auctionId}/bids`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -40,7 +40,7 @@ export async function createAuction({
   auctionEndTime?: string;
   durationMinutes?: number;
 }) {
-  const res = await fetch(`${API_BASE}/auctions`, {
+  const res = await fetch(`${API_BASE_URL}/auctions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -61,13 +61,13 @@ export async function createAuction({
 }
 
 export async function fetchUsers() {
-  const res = await fetch(`${API_BASE}/users`);
+  const res = await fetch(`${API_BASE_URL}/users`);
   if (!res.ok) throw new Error("Failed to fetch users");
   return res.json();
 }
 
 export async function fetchAuctionBids(auctionId: number) {
-  const res = await fetch(`${API_BASE}/auctions/${auctionId}/bids`);
+  const res = await fetch(`${API_BASE_URL}/auctions/${auctionId}/bids`);
   if (!res.ok) throw new Error("Failed to fetch auction bids");
   return res.json();
 }

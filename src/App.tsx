@@ -8,7 +8,6 @@ function App() {
     <>
       <Toaster position="top-right" richColors />
       <Router>
-        {/* <Header /> */}
         <Suspense fallback={<div>Loading...</div>}>
           <Routes>
             {routes.map((route, idx) => (

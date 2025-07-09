@@ -3,7 +3,7 @@ import { twMerge } from "tailwind-merge"
 import { io, Socket } from 'socket.io-client';
 import { useEffect } from 'react';
 
-const SOCKET_URL = 'http://localhost:3001';
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL;
 let socket: Socket | null = null;
 
 export function getSocket() {
@@ -18,7 +18,6 @@ export function getSocket() {
 
 export function useAuctionSocket(auctionId: number, onBidUpdate: (data: any) => void) {
   useEffect(() => {
-    console.log("this has been triggered---------------------------------->>>>>")
     const s = getSocket();
     if (auctionId) {
       s.emit('joinAuction', auctionId);
