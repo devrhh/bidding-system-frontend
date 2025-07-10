@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { placeBid, fetchUsers } from "../services/api";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue, SelectGroup } from "@/components/ui/select";
+import type { User } from "@/types/auction";
 
 type BidFormProps = {
   auctionId: number;
@@ -13,7 +14,7 @@ type BidFormProps = {
 const BidForm: React.FC<BidFormProps> = ({ auctionId, onClose }) => {
   const [amount, setAmount] = useState("");
   const [userId, setUserId] = useState<string>("");
-  const [users, setUsers] = useState<any[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -23,8 +24,9 @@ const BidForm: React.FC<BidFormProps> = ({ auctionId, onClose }) => {
       try {
         const data = await fetchUsers();
         setUsers(data);
-      } catch (err: any) {
-        toast.error(err.message || "Unable to fetch Users");
+      } catch (err) {
+        const error = err as Error;
+        toast.error(error.message || "Unable to fetch Users");
       } finally {
         setUsersLoading(false);
       }
@@ -40,8 +42,9 @@ const BidForm: React.FC<BidFormProps> = ({ auctionId, onClose }) => {
       toast.success("Bid placed successfully!");
       setAmount("");
       if (onClose) onClose();
-    } catch (err: any) {
-      toast.error(err.message || "Failed to place bid");
+    } catch (err) {
+      const error = err as Error;
+      toast.error(error.message || "Failed to place bid");
     } finally {
       setLoading(false);
     }

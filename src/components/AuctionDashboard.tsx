@@ -1,19 +1,27 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-// shadcn/ui components
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-// import AuctionItem from "./AuctionItem";
-// import AuctionDetails from "./AuctionDetails";
 import AddAuctionModal from "./AddAuctionModal";
+import AuctionTimerBadge from "./AuctionTimerBadge";
 import { fetchAuctions, createAuction } from "../services/api";
 import { toast } from "sonner";
+import type { Auction } from "@/types/auction";
+import { useEffect as useSocketEffect } from "react";
+import { getSocket } from "@/lib/utils";
+import { WEBSOCKET_EVENTS } from "@/lib/websocket.constants";
+import type { NewAuctionData } from "@/lib/websocket.constants";
 
 const AuctionDashboard: React.FC = () => {
-  const [auctions, setAuctions] = useState<any[]>([]);
+  const [auctions, setAuctions] = useState<Auction[]>([]);
   const [loading, setLoading] = useState(true);
-  // const [selectedAuction, setSelectedAuction] = useState<any | null>(null);
+  const [, setLatestTimestamps] = useState<{
+    [auctionId: number]: {
+      bidUpdate?: number;
+      auctionUpdate?: number;
+    }
+  }>({});
 
   const loadAuctions = () => {
     setLoading(true);
@@ -24,6 +32,103 @@ const AuctionDashboard: React.FC = () => {
 
   useEffect(() => {
     loadAuctions();
+  }, []);
+
+  // Listen for globalBidUpdate to update currentHighestBid and totalBids in real time
+  useSocketEffect(() => {
+    const socket = getSocket();
+    function handleGlobalBidUpdate(data: { auctionId: number; newHighestBid: number; totalBids?: number; timestamp?: number }) {
+      setLatestTimestamps(prev => {
+        const last = prev[data.auctionId]?.bidUpdate || 0;
+        if (data.timestamp && data.timestamp > last) {
+          setAuctions((prevAuctions) =>
+            prevAuctions.map((auction) =>
+              auction.id === data.auctionId
+                ? {
+                    ...auction,
+                    currentHighestBid: data?.newHighestBid,
+                    totalBids: data.totalBids ?? 0,
+                  }
+                : auction
+            )
+          );
+          return {
+            ...prev,
+            [data.auctionId]: {
+              ...prev[data.auctionId],
+              bidUpdate: data.timestamp
+            }
+          };
+        }
+        return prev;
+      });
+    }
+    socket.on(WEBSOCKET_EVENTS.GLOBAL_BID_UPDATE, handleGlobalBidUpdate);
+    return () => {
+      socket.off(WEBSOCKET_EVENTS.GLOBAL_BID_UPDATE, handleGlobalBidUpdate);
+    };
+  }, []);
+
+  // Listen for globalAuctionUpdate to update auction info in real time
+  useSocketEffect(() => {
+    const socket = getSocket();
+    function handleGlobalAuctionUpdate(data: { auctionId: number; currentHighestBid: number; totalBids: number; isExpired: boolean; timestamp?: number }) {
+      setLatestTimestamps(prev => {
+        const last = prev[data.auctionId]?.auctionUpdate || 0;
+        if (data.timestamp && data.timestamp > last) {
+          setAuctions((prevAuctions) =>
+            prevAuctions.map((auction) =>
+              auction.id === data.auctionId
+                ? {
+                    ...auction,
+                    currentHighestBid: data.currentHighestBid,
+                    totalBids: data.totalBids,
+                    isExpired: data.isExpired,
+                  }
+                : auction
+            )
+          );
+          return {
+            ...prev,
+            [data.auctionId]: {
+              ...prev[data.auctionId],
+              auctionUpdate: data.timestamp
+            }
+          };
+        }
+        return prev;
+      });
+    }
+    socket.on(WEBSOCKET_EVENTS.GLOBAL_AUCTION_UPDATE, handleGlobalAuctionUpdate);
+    return () => {
+      socket.off(WEBSOCKET_EVENTS.GLOBAL_AUCTION_UPDATE, handleGlobalAuctionUpdate);
+    };
+  }, []);
+
+  // Listen for new auctions to add them to the list in real time
+  useSocketEffect(() => {
+    const socket = getSocket();
+    function handleNewAuction(data: NewAuctionData) {
+      const newAuction: Auction = {
+        id: data.auctionId,
+        name: data.name,
+        description: data.description,
+        startingPrice: data.startingPrice,
+        currentHighestBid: data.startingPrice,
+        totalBids: 0,
+        isExpired: false,
+        auctionEndTime: new Date(data.auctionEndTime).toString(),
+        timeLeft: data.timeLeft,
+        timeLeftFormatted: data.timeLeftFormatted,
+      };
+      
+      setAuctions((prevAuctions) => [newAuction, ...prevAuctions]);
+      toast.success(`New auction created: ${data.name}`);
+    }
+    socket.on(WEBSOCKET_EVENTS.NEW_AUCTION, handleNewAuction);
+    return () => {
+      socket.off(WEBSOCKET_EVENTS.NEW_AUCTION, handleNewAuction);
+    };
   }, []);
 
   const handleAddAuction = async (data: {
@@ -37,8 +142,9 @@ const AuctionDashboard: React.FC = () => {
     try {
       await createAuction(data);
       loadAuctions();
-    } catch (err: any) {
-      toast.error(err.message || "Failed to create auction");
+    } catch (err) {
+      const error = err as Error;
+      toast.error(error.message || "Failed to create auction");
     } finally {
       setLoading(false);
     }
@@ -66,7 +172,7 @@ const AuctionDashboard: React.FC = () => {
                 <TableHead>Starting Price</TableHead>
                 <TableHead>Current Highest Bid</TableHead>
                 <TableHead>Total Bids</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>Time Left</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -85,10 +191,20 @@ const AuctionDashboard: React.FC = () => {
                     <Badge variant="secondary">{auction.totalBids}</Badge>
                   </TableCell>
                   <TableCell>
-                    {auction.isExpired ? (
-                      <Badge variant="destructive">Expired</Badge>
+                    {!auction.isExpired ? (
+                      <AuctionTimerBadge 
+                        endTime={auction.auctionEndTime} 
+                        onExpire={() => {
+                          // Update the auction as expired in the local state
+                          setAuctions((prevAuctions) =>
+                            prevAuctions.map((a) =>
+                              a.id === auction.id ? { ...a, isExpired: true } : a
+                            )
+                          );
+                        }}
+                      />
                     ) : (
-                      <Badge variant="outline">Active</Badge>
+                      <Badge variant="destructive">Expired</Badge>
                     )}
                   </TableCell>
                   <TableCell>

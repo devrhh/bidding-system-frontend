@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Badge } from "@/components/ui/badge";
 
 function formatTimeLeft(seconds: number) {
@@ -16,7 +16,10 @@ function formatTimeLeft(seconds: number) {
 }
 
 const AuctionTimerBadge = ({ endTime, onExpire }: { endTime: string; onExpire?: () => void }) => {
-  const calcTimeLeft = () => Math.max(0, Math.floor((new Date(endTime).getTime() - Date.now()) / 1000));
+  const calcTimeLeft = useCallback(
+    () => Math.max(0, Math.floor((new Date(endTime).getTime() - Date.now()) / 1000)),
+    [endTime]
+  );
   const [timeLeft, setTimeLeft] = useState(calcTimeLeft());
 
   useEffect(() => {
@@ -28,7 +31,7 @@ const AuctionTimerBadge = ({ endTime, onExpire }: { endTime: string; onExpire?: 
       setTimeLeft(calcTimeLeft());
     }, 1000);
     return () => clearInterval(interval);
-  }, [endTime, timeLeft, onExpire]);
+  }, [endTime, timeLeft, onExpire, calcTimeLeft]);
 
   return <Badge variant="secondary">Time Left: {formatTimeLeft(timeLeft)}</Badge>;
 };

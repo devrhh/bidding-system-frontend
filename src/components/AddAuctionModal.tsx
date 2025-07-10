@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label"
+import type { AuctionPayload } from "@/types/auction";
 
 interface AddAuctionModalProps {
   onAddAuction: (data: { name: string; description: string; startingPrice: number; auctionEndTime?: string; durationMinutes?: number }) => void;
@@ -25,7 +26,7 @@ const AddAuctionModal: React.FC<AddAuctionModalProps> = ({ onAddAuction }) => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const payload: any = {
+    const payload: AuctionPayload = {
       name,
       description,
       startingPrice: Number(startingPrice),
