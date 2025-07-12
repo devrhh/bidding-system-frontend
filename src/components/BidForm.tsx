@@ -1,10 +1,14 @@
-import React, { useState } from "react";
+import React from "react";
+import { useForm, Controller } from "react-hook-form";
+import { yupResolver } from "@hookform/resolvers/yup";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { placeBid, fetchUsers } from "../services/api";
+import { placeBid } from "../services/api";
+import { useUsers } from "../contexts/useUsers";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue, SelectGroup } from "@/components/ui/select";
-import type { User } from "@/types/auction";
+import type { User, BidFormFields } from "@/types/auction";
+import { bidFormSchema } from "@/lib/validations";
 
 type BidFormProps = {
   auctionId: number;
@@ -12,53 +16,45 @@ type BidFormProps = {
 };
 
 const BidForm: React.FC<BidFormProps> = ({ auctionId, onClose }) => {
-  const [amount, setAmount] = useState("");
-  const [userId, setUserId] = useState<string>("");
-  const [users, setUsers] = useState<User[]>([]);
-  const [usersLoading, setUsersLoading] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const users = useUsers();
+  const { register, handleSubmit, reset, control, formState: { errors, isSubmitting } } = useForm<BidFormFields>({
+    resolver: yupResolver(bidFormSchema),
+    defaultValues: {
+      userId: "",
+      amount: 1,
+    },
+  });
 
-  const handleUsersOpen = async () => {
-    if (users.length === 0 && !usersLoading) {
-      setUsersLoading(true);
-      try {
-        const data = await fetchUsers();
-        setUsers(data);
-      } catch (err) {
-        const error = err as Error;
-        toast.error(error.message || "Unable to fetch Users");
-      } finally {
-        setUsersLoading(false);
-      }
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    setLoading(true);
+  const onSubmit = async (data: BidFormFields) => {
     try {
-      await placeBid(auctionId, Number(userId), Number(amount));
+      await placeBid(auctionId, Number(data.userId), Number(data.amount));
       toast.success("Bid placed successfully!");
-      setAmount("");
+      reset();
       if (onClose) onClose();
     } catch (err) {
       const error = err as Error;
       toast.error(error.message || "Failed to place bid");
-    } finally {
-      setLoading(false);
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="flex gap-2 items-center mt-4">
-      <Select onOpenChange={handleUsersOpen} onValueChange={setUserId} value={userId} disabled={loading || usersLoading}>
+    <form onSubmit={handleSubmit(onSubmit)} className="flex gap-2 items-center mt-4">
+      <div className="flex flex-col">
+        <Controller
+          name="userId"
+          control={control}
+          render={({ field }) => (
+            <Select
+              value={field.value}
+              onValueChange={field.onChange}
+              disabled={isSubmitting}
+            >
         <SelectTrigger className="w-[180px]">
-          <SelectValue placeholder={usersLoading ? "Loading users..." : "Select user"} />
+            <SelectValue placeholder={users.length === 0 ? "Loading users..." : "Select user"} />
         </SelectTrigger>
         <SelectContent>
           <SelectGroup>
-          {users.map((user) => (
+            {users.map((user: User) => (
             <SelectItem key={user.id} value={String(user.id)}>
             {user.id} {user.firstName}
           </SelectItem>
@@ -66,17 +62,22 @@ const BidForm: React.FC<BidFormProps> = ({ auctionId, onClose }) => {
           </SelectGroup>
         </SelectContent>
       </Select>
+          )}
+        />
+        {errors.userId && <div className="text-xs text-red-500 mt-1">{errors.userId.message}</div>}
+      </div>
+      <div className="flex flex-col">
       <Input
         type="number"
         min="1"
         placeholder="Enter your bid"
-        value={amount}
-        onChange={(e) => setAmount(e.target.value)}
+          {...register("amount")}
         className="w-32"
-        required
-      />
-      <Button type="submit" disabled={loading || !userId}>
-        {loading ? "Placing..." : "Place Bid"}
+        />
+        {errors.amount && <div className="text-xs text-red-500 mt-1">{errors.amount.message}</div>}
+      </div>
+      <Button type="submit" disabled={isSubmitting}>
+        {isSubmitting ? "Placing..." : "Place Bid"}
       </Button>
     </form>
   );

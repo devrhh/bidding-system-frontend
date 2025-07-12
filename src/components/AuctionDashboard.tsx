@@ -12,96 +12,99 @@ import { useEffect as useSocketEffect } from "react";
 import { getSocket } from "@/lib/utils";
 import { WEBSOCKET_EVENTS } from "@/lib/websocket.constants";
 import type { NewAuctionData } from "@/lib/websocket.constants";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationPrevious,
+  PaginationNext,
+  PaginationLink
+} from "@/components/ui/pagination";
+import { truncate } from "@/lib/utils";
 
 const AuctionDashboard: React.FC = () => {
   const [auctions, setAuctions] = useState<Auction[]>([]);
   const [loading, setLoading] = useState(true);
-  const [, setLatestTimestamps] = useState<{
-    [auctionId: number]: {
-      bidUpdate?: number;
-      auctionUpdate?: number;
-    }
-  }>({});
+  const [page, setPage] = useState(1);
+  const [limit] = useState(10);
+  const [total, setTotal] = useState(0);
+  const totalPages = Math.max(1, Math.ceil(total / limit));
 
-  const loadAuctions = () => {
+  // Track the auctions currently subscribed to
+  const [subscribedAuctions, setSubscribedAuctions] = useState<number[]>([]);
+
+  const loadAuctions = (pageNum = page) => {
     setLoading(true);
-    fetchAuctions()
-      .then(setAuctions)
+    fetchAuctions(pageNum, limit)
+      .then((res) => {
+        if (Array.isArray(res)) {
+          setAuctions(res);
+          setTotal(res.length);
+        } else {
+          setAuctions(Array.isArray(res.data) ? res.data : []);
+          setTotal(res.total);
+        }
+      })
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
-    loadAuctions();
-  }, []);
+    loadAuctions(page);
+  }, [page]);
 
-  // Listen for globalBidUpdate to update currentHighestBid and totalBids in real time
-  useSocketEffect(() => {
+  // Subscribe to only the auctions on the current page
+  useEffect(() => {
     const socket = getSocket();
-    function handleGlobalBidUpdate(data: { auctionId: number; newHighestBid: number; totalBids?: number; timestamp?: number }) {
-      setLatestTimestamps(prev => {
-        const last = prev[data.auctionId]?.bidUpdate || 0;
-        if (data.timestamp && data.timestamp > last) {
-          setAuctions((prevAuctions) =>
-            prevAuctions.map((auction) =>
-              auction.id === data.auctionId
-                ? {
-                    ...auction,
-                    currentHighestBid: data?.newHighestBid,
-                    totalBids: data.totalBids ?? 0,
-                  }
-                : auction
-            )
-          );
-          return {
-            ...prev,
-            [data.auctionId]: {
-              ...prev[data.auctionId],
-              bidUpdate: data.timestamp
-            }
-          };
-        }
-        return prev;
-      });
-    }
-    socket.on(WEBSOCKET_EVENTS.GLOBAL_BID_UPDATE, handleGlobalBidUpdate);
+    const currentAuctionIds = auctions.map(a => a.id);
+    
+    // Only join/leave rooms as needed
+    const toJoin = currentAuctionIds.filter(id => !subscribedAuctions.includes(id));
+    const toLeave = subscribedAuctions.filter(id => !currentAuctionIds.includes(id));
+
+    toJoin.forEach(id => socket.emit(WEBSOCKET_EVENTS.JOIN_AUCTION, id));
+    toLeave.forEach(id => socket.emit(WEBSOCKET_EVENTS.LEAVE_AUCTION, id));
+    setSubscribedAuctions(currentAuctionIds);
     return () => {
-      socket.off(WEBSOCKET_EVENTS.GLOBAL_BID_UPDATE, handleGlobalBidUpdate);
+      // Debug logs removed
+      currentAuctionIds.forEach(id => socket.emit(WEBSOCKET_EVENTS.LEAVE_AUCTION, id));
     };
-  }, []);
+  }, [auctions.map(a => a.id).join(",")]);
 
-  // Listen for globalAuctionUpdate to update auction info in real time
+  // Listen for per-auction bid and auction updates
   useSocketEffect(() => {
     const socket = getSocket();
-    function handleGlobalAuctionUpdate(data: { auctionId: number; currentHighestBid: number; totalBids: number; isExpired: boolean; timestamp?: number }) {
-      setLatestTimestamps(prev => {
-        const last = prev[data.auctionId]?.auctionUpdate || 0;
-        if (data.timestamp && data.timestamp > last) {
-          setAuctions((prevAuctions) =>
-            prevAuctions.map((auction) =>
-              auction.id === data.auctionId
-                ? {
-                    ...auction,
-                    currentHighestBid: data.currentHighestBid,
-                    totalBids: data.totalBids,
-                    isExpired: data.isExpired,
-                  }
-                : auction
-            )
-          );
-          return {
-            ...prev,
-            [data.auctionId]: {
-              ...prev[data.auctionId],
-              auctionUpdate: data.timestamp
-            }
-          };
-        }
-        return prev;
-      });
+    function handleBidUpdate(data: { auctionId: number; newHighestBid: number; totalBids?: number; timestamp?: number }) {
+      setAuctions((prevAuctions) =>
+        prevAuctions.map((auction) =>
+          auction.id === data.auctionId
+            ? {
+                ...auction,
+                currentHighestBid: data?.newHighestBid,
+                totalBids: data.totalBids ?? 0,
+              }
+            : auction
+        )
+      );
     }
-    socket.on(WEBSOCKET_EVENTS.GLOBAL_AUCTION_UPDATE, handleGlobalAuctionUpdate);
+    function handleAuctionUpdate(data: { auctionId: number; currentHighestBid: number; totalBids: number; isExpired: boolean; timestamp?: number }) {
+      setAuctions((prevAuctions) =>
+        prevAuctions.map((auction) =>
+          auction.id === data.auctionId
+            ? {
+                ...auction,
+                currentHighestBid: data.currentHighestBid,
+                totalBids: data.totalBids,
+                isExpired: data.isExpired,
+              }
+            : auction
+        )
+      );
+    }
+    socket.on(WEBSOCKET_EVENTS.BID_UPDATE, handleBidUpdate);
+    socket.on(WEBSOCKET_EVENTS.AUCTION_UPDATE, handleAuctionUpdate);
     return () => {
-      socket.off(WEBSOCKET_EVENTS.GLOBAL_AUCTION_UPDATE, handleGlobalAuctionUpdate);
+      socket.off(WEBSOCKET_EVENTS.BID_UPDATE, handleBidUpdate);
+      socket.off(WEBSOCKET_EVENTS.AUCTION_UPDATE, handleAuctionUpdate);
     };
   }, []);
 
@@ -109,20 +112,6 @@ const AuctionDashboard: React.FC = () => {
   useSocketEffect(() => {
     const socket = getSocket();
     function handleNewAuction(data: NewAuctionData) {
-      const newAuction: Auction = {
-        id: data.auctionId,
-        name: data.name,
-        description: data.description,
-        startingPrice: data.startingPrice,
-        currentHighestBid: data.startingPrice,
-        totalBids: 0,
-        isExpired: false,
-        auctionEndTime: new Date(data.auctionEndTime).toString(),
-        timeLeft: data.timeLeft,
-        timeLeftFormatted: data.timeLeftFormatted,
-      };
-      
-      setAuctions((prevAuctions) => [newAuction, ...prevAuctions]);
       toast.success(`New auction created: ${data.name}`);
     }
     socket.on(WEBSOCKET_EVENTS.NEW_AUCTION, handleNewAuction);
@@ -141,7 +130,11 @@ const AuctionDashboard: React.FC = () => {
     setLoading(true);
     try {
       await createAuction(data);
-      loadAuctions();
+      if (page === 1) {
+        loadAuctions(1);
+      } else {
+        setPage(1);
+      }
     } catch (err) {
       const error = err as Error;
       toast.error(error.message || "Failed to create auction");
@@ -161,66 +154,100 @@ const AuctionDashboard: React.FC = () => {
         <div className="flex justify-end mb-4">
           <AddAuctionModal onAddAuction={handleAddAuction} />
         </div>
-        {auctions.length === 0 ? (
+        {Array.isArray(auctions) && auctions.length === 0 ? (
           <div>No auctions found.</div>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead>Starting Price</TableHead>
-                <TableHead>Current Highest Bid</TableHead>
-                <TableHead>Total Bids</TableHead>
-                <TableHead>Time Left</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {auctions.map((auction) => (
-                <TableRow key={auction.id}>
-                  <TableCell>{auction.name}</TableCell>
-                  <TableCell>{auction.description}</TableCell>
-                  <TableCell>
-                    <Badge variant="secondary">${auction.startingPrice}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge>${auction.currentHighestBid ?? 0}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="secondary">{auction.totalBids}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    {!auction.isExpired ? (
-                      <AuctionTimerBadge 
-                        endTime={auction.auctionEndTime} 
-                        onExpire={() => {
-                          // Update the auction as expired in the local state
-                          setAuctions((prevAuctions) =>
-                            prevAuctions.map((a) =>
-                              a.id === auction.id ? { ...a, isExpired: true } : a
-                            )
-                          );
-                        }}
-                      />
-                    ) : (
-                      <Badge variant="destructive">Expired</Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Link to={`/auction/${auction.id}`}>
-                      <button
-                        className="px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
-                        // disabled={auction.isExpired}
-                      >
-                        Show Details
-                      </button>
-                    </Link>
-                  </TableCell>
+          <>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead>Starting Price</TableHead>
+                  <TableHead>Current Highest Bid</TableHead>
+                  <TableHead>Total Bids</TableHead>
+                  <TableHead>Time Left</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {auctions.map((auction) => (
+                  <TableRow key={auction.id}>
+                    <TableCell title={auction.name}>{truncate(auction.name, 20)}</TableCell>
+                    <TableCell title={auction.description}>{truncate(auction.description, 20)}</TableCell>
+                    <TableCell>
+                      <Badge variant="secondary">${auction.startingPrice}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge>${auction.currentHighestBid ?? 0}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary">{auction.totalBids}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      {!auction.isExpired ? (
+                        <AuctionTimerBadge 
+                          endTime={auction.auctionEndTime} 
+                          onExpire={() => {
+                            // Update the auction as expired in the local state
+                            setAuctions((prevAuctions) =>
+                              prevAuctions.map((a) =>
+                                a.id === auction.id ? { ...a, isExpired: true } : a
+                              )
+                            );
+                          }}
+                        />
+                      ) : (
+                        <Badge variant="destructive">Expired</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Link to={`/auction/${auction.id}`}>
+                        <button
+                          className="px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
+                          // disabled={auction.isExpired}
+                        >
+                          Show Details
+                        </button>
+                      </Link>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            <Pagination>
+              <PaginationContent>
+                <PaginationItem>
+                  {page === 1 ? (
+                    <span className="pointer-events-none opacity-50">
+                      <PaginationPrevious />
+                    </span>
+                  ) : (
+                    <PaginationPrevious onClick={() => setPage(page - 1)} />
+                  )}
+                </PaginationItem>
+                {Array.from({ length: totalPages }, (_, i) => (
+                  <PaginationItem key={i + 1}>
+                    <PaginationLink
+                      isActive={page === i + 1}
+                      onClick={() => setPage(i + 1)}
+                    >
+                      {i + 1}
+                    </PaginationLink>
+                  </PaginationItem>
+                ))}
+                <PaginationItem>
+                  {page === totalPages || totalPages === 0 ? (
+                    <span className="pointer-events-none opacity-50">
+                      <PaginationNext />
+                    </span>
+                  ) : (
+                    <PaginationNext onClick={() => setPage(page + 1)} />
+                  )}
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+          </>
         )}
       </CardContent>
     </Card>

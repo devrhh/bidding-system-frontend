@@ -36,3 +36,8 @@ export function useAuctionSocket(auctionId: number, onBidUpdate: (data: unknown)
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
+
+export function truncate(str: string, maxLength: number) {
+  if (!str) return '';
+  return str.length > maxLength ? str.slice(0, maxLength) + '...' : str;
+}

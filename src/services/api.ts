@@ -1,24 +1,22 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+import { apiClient } from '@/lib/apiClient';
+import type { AuctionPayload } from '../types/auction';
 
-export async function fetchAuctions() {
-  const res = await fetch(`${API_BASE_URL}/auctions`);
+export async function fetchAuctions(page = 1, limit = 10) {
+  const res = await apiClient(`/auctions?page=${page}&limit=${limit}`);
   if (!res.ok) throw new Error("Failed to fetch auctions");
   return res.json();
 }
 
 export async function fetchAuctionById(id: number) {
-  const res = await fetch(`${API_BASE_URL}/auctions/${id}`);
+  const res = await apiClient(`/auctions/${id}`);
   if (!res.ok) throw new Error("Failed to fetch auction details");
   return res.json();
 }
 
 export async function placeBid(auctionId: number, userId: number, amount: number) {
-  const res = await fetch(`${API_BASE_URL}/auctions/${auctionId}/bids`, {
+  const res = await apiClient(`/auctions/${auctionId}/bids`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({auctionId, userId, amount }),
+    body: JSON.stringify({ auctionId, userId, amount }),
   });
   if (!res.ok) {
     const error = await res.json().catch(() => ({}));
@@ -33,18 +31,9 @@ export async function createAuction({
   startingPrice,
   auctionEndTime,
   durationMinutes,
-}: {
-  name: string;
-  description: string;
-  startingPrice: number;
-  auctionEndTime?: string;
-  durationMinutes?: number;
-}) {
-  const res = await fetch(`${API_BASE_URL}/auctions`, {
+}: AuctionPayload) {
+  const res = await apiClient(`/auctions`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
     body: JSON.stringify({
       name,
       description,
@@ -61,13 +50,13 @@ export async function createAuction({
 }
 
 export async function fetchUsers() {
-  const res = await fetch(`${API_BASE_URL}/users`);
+  const res = await apiClient(`/users`);
   if (!res.ok) throw new Error("Failed to fetch users");
   return res.json();
 }
 
 export async function fetchAuctionBids(auctionId: number) {
-  const res = await fetch(`${API_BASE_URL}/auctions/${auctionId}/bids`);
+  const res = await apiClient(`/auctions/${auctionId}/bids`);
   if (!res.ok) throw new Error("Failed to fetch auction bids");
   return res.json();
 }
