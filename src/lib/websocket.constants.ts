@@ -1,4 +1,3 @@
-// WebSocket event names
 export const WEBSOCKET_EVENTS = {
   BID_UPDATE: 'bidUpdate',
   GLOBAL_BID_UPDATE: 'globalBidUpdate',
@@ -10,8 +9,7 @@ export const WEBSOCKET_EVENTS = {
   LEAVE_AUCTION: 'leaveAuction',
 } as const;
 
-// WebSocket data interfaces
-export interface BidUpdateData {
+export type BidUpdateData = {
   auctionId: number;
   newHighestBid: number;
   bidderId: number;
@@ -20,8 +18,7 @@ export interface BidUpdateData {
   timeLeftFormatted: string;
   totalBids: number;
 }
-
-export interface AuctionUpdateData {
+export type AuctionUpdateData = {
   auctionId: number;
   name: string;
   currentHighestBid: number;
@@ -30,8 +27,7 @@ export interface AuctionUpdateData {
   totalBids: number;
   isExpired: boolean;
 }
-
-export interface NewAuctionData {
+export type NewAuctionData = {
   auctionId: number;
   name: string;
   description: string;
@@ -40,10 +36,7 @@ export interface NewAuctionData {
   timeLeft: number;
   timeLeftFormatted: string;
 }
-
-
-
-export interface UserCountData {
+export type UserCountData = {
   auctionId: number;
   count: number;
 } 
