@@ -1,11 +1,11 @@
 # Stage 1: Build the app
-FROM node:20-alpine AS builder
+FROM node:18-alpine AS builder
 
 WORKDIR /app
 
 # Copy package.json and package-lock.json
 COPY package.json package-lock.json ./
-RUN npm ci --only=production
+RUN npm ci
 
 # Copy rest of the code and build the app
 COPY . .
